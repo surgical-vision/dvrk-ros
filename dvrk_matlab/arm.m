@@ -154,7 +154,6 @@ classdef arm < handle
             topic = strcat(self.ros_name, '/state_joint_current');
             self.state_joint_current_subscriber = ...
                 rossubscriber(topic, rostype.sensor_msgs_JointState);
-
             % jacobian spatial
             topic = strcat(self.ros_name, '/jacobian_spatial');
             self.jacobian_spatial_subscriber = ...

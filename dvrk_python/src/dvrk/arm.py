@@ -134,11 +134,16 @@ class arm(object):
         self.__goal_reached_event = threading.Event()
 
         # continuous publish from dvrk_bridge
+        self.__position_jaw_desired = numpy.array(0, dtype = numpy.float)#CLA
+        self.__effort_jaw_desired = numpy.array(0, dtype = numpy.float)#CLA
         self.__position_joint_desired = numpy.array(0, dtype = numpy.float)
         self.__effort_joint_desired = numpy.array(0, dtype = numpy.float)
         self.__position_cartesian_desired = PyKDL.Frame()
         self.__position_cartesian_local_desired = PyKDL.Frame()
         self.__position_joint_current = numpy.array(0, dtype = numpy.float)
+        self.__position_jaw_current = numpy.array(0, dtype = numpy.float)#CLA
+        self.__velocity_jaw_current = numpy.array(0, dtype=numpy.float)#cla
+        self.__effort_jaw_current = numpy.array(0, dtype=numpy.float)#cla
         self.__velocity_joint_current = numpy.array(0, dtype = numpy.float)
         self.__effort_joint_current = numpy.array(0, dtype = numpy.float)
         self.__position_cartesian_current = PyKDL.Frame()
@@ -163,6 +168,15 @@ class arm(object):
         self.__set_position_goal_joint_pub = rospy.Publisher(self.__full_ros_namespace
                                                              + '/set_position_goal_joint',
                                                              JointState, latch = True, queue_size = 1)
+        #CLA
+        self.__set_position_jaw_pub = rospy.Publisher(self.__full_ros_namespace
+                                                      + '/set_position_jaw',
+                                                      JointState, latch = True, queue_size = 1)
+
+        self.__set_position_goal_jaw_pub = rospy.Publisher(self.__full_ros_namespace
+                                                           + '/set_position_goal_jaw',
+                                                           JointState, latch = True, queue_size = 1)
+        #
         self.__set_position_cartesian_pub = rospy.Publisher(self.__full_ros_namespace
                                                             + '/set_position_cartesian',
                                                             Pose, latch = True, queue_size = 1)
@@ -172,6 +186,13 @@ class arm(object):
         self.__set_effort_joint_pub = rospy.Publisher(self.__full_ros_namespace
                                                       + '/set_effort_joint',
                                                       JointState, latch = True, queue_size = 1)
+        #CLA
+        self.__set_effort_jaw_pub = rospy.Publisher(self.__full_ros_namespace
+                                                      + '/set_effort_jaw',
+                                                      JointState, latch = True, queue_size = 1)
+        #
+
+
         self.__set_wrench_body_pub = rospy.Publisher(self.__full_ros_namespace
                                                      + '/set_wrench_body',
                                                      Wrench, latch = True, queue_size = 1)
@@ -187,6 +208,10 @@ class arm(object):
         self.__pub_list = [self.__set_arm_desired_state_pub,
                            self.__set_position_joint_pub,
                            self.__set_position_goal_joint_pub,
+                           # CLA
+                           self.__set_position_jaw_pub,
+                           self.__set_position_goal_jaw_pub,
+                           # 
                            self.__set_position_cartesian_pub,
                            self.__set_position_goal_cartesian_pub,
                            self.__set_effort_joint_pub,
@@ -198,29 +223,37 @@ class arm(object):
         self.__sub_list = [rospy.Subscriber(self.__full_ros_namespace + '/current_state',
                                             String, self.__arm_current_state_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/desired_state',
-                                          String, self.__arm_desired_state_cb),
+                                            String, self.__arm_desired_state_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/goal_reached',
-                                          Bool, self.__goal_reached_cb),
+                                            Bool, self.__goal_reached_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/state_joint_desired',
-                                          JointState, self.__state_joint_desired_cb),
+                                            JointState, self.__state_joint_desired_cb),
+                           # CLA
+                           rospy.Subscriber(self.__full_ros_namespace + '/state_jaw_desired',
+                                            JointState, self.__state_jaw_desired_cb),
+                           #
                            rospy.Subscriber(self.__full_ros_namespace + '/position_cartesian_desired',
-                                          PoseStamped, self.__position_cartesian_desired_cb),
+                                            PoseStamped, self.__position_cartesian_desired_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/position_cartesian_local_desired',
-                                          PoseStamped, self.__position_cartesian_local_desired_cb),
+                                            PoseStamped, self.__position_cartesian_local_desired_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/state_joint_current',
-                                          JointState, self.__state_joint_current_cb),
+                                            JointState, self.__state_joint_current_cb),
+                           #CLA
+                           rospy.Subscriber(self.__full_ros_namespace + '/state_jaw_current',
+                                            JointState, self.__state_jaw_current_cb),
+                           #
                            rospy.Subscriber(self.__full_ros_namespace + '/position_cartesian_current',
-                                          PoseStamped, self.__position_cartesian_current_cb),
+                                            PoseStamped, self.__position_cartesian_current_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/position_cartesian_local_current',
-                                          PoseStamped, self.__position_cartesian_local_current_cb),
+                                            PoseStamped, self.__position_cartesian_local_current_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/twist_body_current',
-                                          TwistStamped, self.__twist_body_current_cb),
+                                            TwistStamped, self.__twist_body_current_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/wrench_body_current',
-                                          WrenchStamped, self.__wrench_body_current_cb),
+                                            WrenchStamped, self.__wrench_body_current_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/jacobian_spatial',
-                                          Float64MultiArray, self.__jacobian_spatial_cb),
+                                            Float64MultiArray, self.__jacobian_spatial_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/jacobian_body',
-                                          Float64MultiArray, self.__jacobian_body_cb)]
+                                            Float64MultiArray, self.__jacobian_body_cb)]
 
         # create node
         if not rospy.get_node_uri():
@@ -261,6 +294,16 @@ class arm(object):
         self.__position_joint_desired.flat[:] = data.position
         self.__effort_joint_desired.flat[:] = data.effort
 
+        #CLA
+    def __state_jaw_desired_cb(self, data):
+        """Callback for the jaw desired position.
+
+        """
+        self.__position_jaw_desired.resize(len(data.position))
+        self.__effort_jaw_desired.resize(len(data.effort))
+        self.__position_jaw_desired.flat[:] = data.position
+        self.__effort_jaw_desired.flat[:] = data.effort
+    #
 
     def __position_cartesian_desired_cb(self, data):
         """Callback for the cartesian desired position.
@@ -287,6 +330,16 @@ class arm(object):
         self.__velocity_joint_current.flat[:] = data.velocity
         self.__effort_joint_current.flat[:] = data.effort
 
+    #CLA
+    def __state_jaw_current_cb(self, data):
+        """Callback for the current jaw position."""
+        self.__position_jaw_current.resize(len(data.position))
+        self.__velocity_jaw_current.resize(len(data.velocity))
+        self.__effort_jaw_current.resize(len(data.effort))
+        self.__position_jaw_current.flat[:] = data.position
+        self.__velocity_jaw_current.flat[:] = data.velocity
+        self.__effort_jaw_current.flat[:] = data.effort
+    #
 
     def __position_cartesian_current_cb(self, data):
         """Callback for the current cartesian position.
@@ -467,6 +520,34 @@ class arm(object):
         :rtype: `JointState <http://docs.ros.org/api/sensor_msgs/html/msg/JointState.html>`_"""
         return self.__effort_joint_current
 
+    #CLA
+    def get_current_jaw_position(self):
+        """Get the :ref:`current jaw position <currentvdesired>` of
+        the arm.
+
+        :returns: the current position of the arm in jaw space
+        :rtype: `jawState <http://docs.ros.org/api/sensor_msgs/html/msg/jawState.html>`_"""
+        return self.__position_jaw_current
+
+
+    def get_current_jaw_velocity(self):
+        """Get the :ref:`current jaw velocity <currentvdesired>` of
+        the arm.
+
+        :returns: the current position of the arm in jaw space
+        :rtype: `jawState <http://docs.ros.org/api/sensor_msgs/html/msg/jawState.html>`_"""
+        return self.__velocity_jaw_current
+
+
+    def get_current_jaw_effort(self):
+        """Get the :ref:`current jaw effort <currentvdesired>` of
+        the arm.
+
+        :returns: the current position of the arm in jaw space
+        :rtype: `JawState <http://docs.ros.org/api/sensor_msgs/html/msg/JawState.html>`_"""
+        return self.__effort_jaw_current
+    #
+
     def get_jacobian_spatial(self):
         """Get the :ref:`jacobian spatial` of the arm.
 
@@ -505,6 +586,15 @@ class arm(object):
         :rtype: `JointState <http://docs.ros.org/api/sensor_msgs/html/msg/JointState.html>`_"""
         return self.__position_joint_desired
 
+        #CLA
+    def get_desired_jaw_position(self):
+        """Get the :ref:`desired jaw position <currentvdesired>` of
+        the arm.
+
+        :returns: the desired position of the arm in jaw space
+        :rtype: `JawState <http://docs.ros.org/api/sensor_msgs/html/msg/JawState.html>`_"""
+        return self.__position_jaw_desired
+    #
 
     def get_desired_joint_effort(self):
         """Get the :ref:`desired joint effort <currentvdesired>` of
@@ -513,6 +603,16 @@ class arm(object):
         :returns: the desired effort of the arm in joint space
         :rtype: `JointState <http://docs.ros.org/api/sensor_msgs/html/msg/JointState.html>`_"""
         return self.__effort_joint_desired
+
+    #CLA
+    def get_desired_jaw_effort(self):
+        """Get the :ref:`desired jaw effort <currentvdesired>` of
+        the arm.
+
+        :returns: the desired effort of the arm in jaw space
+        :rtype: `JointState <http://docs.ros.org/api/sensor_msgs/html/msg/JointState.html>`_"""
+        return self.__effort_jaw_desired 
+    #
 
 
     def get_joint_number(self):
@@ -535,7 +635,7 @@ class arm(object):
         # check the input against all input_type
         for i in range (len(type_list)):
             if (type(input) is type_list[i]):
-                  return True
+                return True
         # not of type_list print state for this error inside
         if (found == False):
             print 'Error in ', inspect.stack()[1][3], 'input is of type', input, 'and is not one of:'
@@ -699,7 +799,7 @@ class arm(object):
         :param delta_pos: the incremental amount in which you want to move index by, this is in terms of a numpy array
         :param interpolate: see  :ref:`interpolate <interpolate>`"""
         if ((not(type(delta_pos) is numpy.ndarray))
-             or (not(delta_pos.dtype == numpy.float64))):
+                or (not(delta_pos.dtype == numpy.float64))):
             print "delta_pos must be an array of floats"
             return False
         if (not(delta_pos.size ==  self.get_joint_number())):
@@ -723,6 +823,26 @@ class arm(object):
             return False
 
 
+    #CLA
+    def dmove_jaw(self, delta_pos, interpolate = True, blocking = True):
+        """Incremental move in joint space.
+
+        :param delta_pos: the incremental amount in which you want to move index by, this is in terms of a numpy array
+        :param interpolate: see  :ref:`interpolate <interpolate>`"""
+        if ((not(type(delta_pos) is numpy.ndarray))
+                or (not(delta_pos.dtype == numpy.float64))):
+            print "delta_pos must be an array of floats"
+            return False
+        if (not(delta_pos.size ==  self.get_joint_number())):
+            print "delta_pos must be an array of size", self.get_joint_number()
+            return False
+
+        abs_pos = numpy.array(self.__position_jaw_desired)
+        abs_pos = abs_pos+ delta_pos
+        return self.__move_jaw(abs_pos, interpolate, blocking)
+    #
+
+
     def dmove_joint_some(self, delta_pos, indices, interpolate = True, blocking = True):
         """Incremental index move of a series of joints in joint space.
 
@@ -732,18 +852,18 @@ class arm(object):
 
         # check if delta is an array
         if ((not(type(delta_pos) is numpy.ndarray))
-             or (not(delta_pos.dtype == numpy.float64))):
+                or (not(delta_pos.dtype == numpy.float64))):
             print "delta_pos must be an array of floats"
             return False
 
         # check the length of the delta move
         if ((not(type(indices) is numpy.ndarray))
-            or (not(indices.dtype == numpy.int64))):
+                or (not(indices.dtype == numpy.int64))):
             print "indices must be an array of integers"
             return False
 
         if ((not(indices.size == delta_pos.size))
-            or (indices.size > self.get_joint_number())):
+                or (indices.size > self.get_joint_number())):
             print "size of delta_pos and indices must match and be less than", self.get_joint_number()
             return False
 
@@ -767,7 +887,7 @@ class arm(object):
         :param interpolate: see  :ref:`interpolate <interpolate>`"""
 
         if ((not(type(abs_pos) is numpy.ndarray))
-            or (not(abs_pos.dtype == numpy.float64))):
+                or (not(abs_pos.dtype == numpy.float64))):
             print "abs_pos must be an array of floats"
             return False
         if (not(abs_pos.size == self.get_joint_number())):
@@ -775,6 +895,24 @@ class arm(object):
             return False
 
         return self.__move_joint(abs_pos, interpolate, blocking)
+
+    #CLA
+    def move_jaw(self, abs_pos, interpolate = True, blocking = True):
+        """Absolute move in joint space.
+
+        :param abs_pos: the absolute position in which you want to move, this is a numpy array
+        :param interpolate: see  :ref:`interpolate <interpolate>`"""
+
+        if ((not(type(abs_pos) is numpy.ndarray))
+                or (not(abs_pos.dtype == numpy.float64))):
+            print "abs_pos must be an array of floats"
+            return False
+        if (not(abs_pos.size == self.get_joint_number())):
+            print "abs_pos must be an array of size", self.get_joint_number()
+            return False
+
+        return self.__move_jaw(abs_pos, interpolate, blocking)
+    #
 
 
     def move_joint_one(self, abs_pos, joint_index, interpolate = True, blocking = True):
@@ -797,18 +935,18 @@ class arm(object):
         :param interpolate: see  :ref:`interpolate <interpolate>`"""
 
         if ((not(type(abs_pos) is numpy.ndarray))
-            or (not(abs_pos.dtype == numpy.float64))):
+                or (not(abs_pos.dtype == numpy.float64))):
             print "delta_pos must be an array of floats"
             return False
 
         # check the length of the delta move
         if ((not(type(indices) is numpy.ndarray))
-            or (not(indices.dtype == numpy.int64))):
+                or (not(indices.dtype == numpy.int64))):
             print "indices must be an array of integers"
             return False
 
         if ((not(indices.size == abs_pos.size))
-            or (indices.size > self.get_joint_number())):
+                or (indices.size > self.get_joint_number())):
             print "size of delta_pos and indices must match and be less than", self.get_joint_number()
             return False
 
@@ -877,10 +1015,61 @@ class arm(object):
             return False
         return True
 
+    # CLA
+    def __move_jaw(self, abs_joint, interpolate=True, blocking=True):
+        """Absolute move by vector in joint plane.
+
+        :param abs_joint: the absolute position of the joints in terms of a numpy array
+        :param interpolate: if false the trajectory generator will be used; if true you can bypass the trajectory generator"""
+        if (interpolate):
+            return self.__move_jaw_goal(abs_joint, blocking)
+        else:
+            return self.__move_jaw_direct(abs_joint)
+
+    def __move_jaw_direct(self, end_joint):
+        """Move the arm to the end vector by passing the trajectory generator.
+
+        :param end_joint: the list of joints in which you should conclude movement
+        :returns: true if you had succesfully move
+        :rtype: Bool"""
+        # go to that position directly
+        joint_state = JointState()
+        joint_state.position[:] = end_joint.flat
+        self.__set_position_jaw_pub.publish(joint_state)
+        return True
+
+    def __move_jaw_goal(self, end_joint, blocking):
+        """Move the arm to the end vector by bypassing the trajectory generator.
+
+        :param end_joint: the list of joints in which you should conclude movement
+        :returns: true if you had succesfully move
+        :rtype: Bool"""
+        joint_state = JointState()
+        joint_state.position[:] = end_joint.flat
+        if blocking:
+            return self.__set_position_goal_jaw_publish_and_wait(joint_state)
+        else:
+            self.__set_position_goal_jaw_pub.publish(joint_state)
+        return True
+
+    def __set_position_goal_jaw_publish_and_wait(self, end_position):
+        """Wrapper around publisher/subscriber to manage events for joint coordinates.
+
+        :param end_position: there is only one parameter, end_position which tells us what the ending position is
+        :returns: whether or not you have successfully moved by goal or not
+        :rtype: Bool"""
+        self.__goal_reached_event.clear()
+        self.__goal_reached = False
+        self.__set_position_goal_jaw_pub.publish(end_position)
+        self.__goal_reached_event.wait(20) # 1 minute at most
+        if not self.__goal_reached:
+            return False
+        return True
+    #
 
     def set_effort_joint(self, effort):
         if ((not(type(effort) is numpy.ndarray))
-            or (not(effort.dtype == numpy.float64))):
+                or (not(effort.dtype == numpy.float64))):
             print "effort must be an array of floats"
             return False
         if (not(effort.size == self.get_joint_number())):
@@ -890,6 +1079,21 @@ class arm(object):
         joint_state.effort[:] = effort.flat
         self.__set_effort_joint_pub.publish(joint_state)
         return True
+
+    #CLA
+    def set_effort_jaw(self, effort):
+        if ((not(type(effort) is numpy.ndarray))
+                or (not(effort.dtype == numpy.float64))):
+            print "effort must be an array of floats"
+            return False
+        if (not(effort.size == self.get_joint_number())):
+            print "effort must be an array of size", self.get_joint_number()
+            return False
+        joint_state = JointState()
+        joint_state.effort[:] = effort.flat
+        self.__set_effort_jaw_pub.publish(joint_state)
+        return True
+    #
 
 
     def set_wrench_spatial_force(self, force):
@@ -932,7 +1136,7 @@ class arm(object):
         g.data = gravity_compensation
         self.__set_gravity_compensation_pub.publish(g)
 
-# Unregister all publishers and subscribers for this instance
+    # Unregister all publishers and subscribers for this instance
     def unregister(self, verbose=False):
         for sub in self.__sub_list:
             sub.unregister()
